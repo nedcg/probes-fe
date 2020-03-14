@@ -33,6 +33,8 @@ const fakeAuth = {
   authenticate(email, password, cb) {
     fetch(`http://localhost:1337/api/v1/entrance/login`, {
       method: 'PUT',
+      credentials: 'include',
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
       body: JSON.stringify({emailAddress: email, password: password, rememberMe: true})
     }).then(res => {
       if (res.ok) {
@@ -43,7 +45,8 @@ const fakeAuth = {
   },
   signout(cb) {
     fetch(`http://localhost:1337/api/v1/account/logout`, {
-      method: 'GET'
+      method: 'GET',
+      headers: {'Content-Type': 'application/json; charset=utf-8'},
     }).then(res => {
       if (res.ok) {
         fakeAuth.isAuthenticated = false;
