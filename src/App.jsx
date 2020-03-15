@@ -37,9 +37,7 @@ const fakeAuth = {
       headers: {'Content-Type': 'application/json; charset=utf-8'},
       body: JSON.stringify({emailAddress: email, password: password, rememberMe: true})
     }).then(res => {
-      if (res.ok) {
-        fakeAuth.isAuthenticated = true;
-      }
+      if (res.ok) fakeAuth.isAuthenticated = true;
       cb();
     });
   },
@@ -85,9 +83,8 @@ const App = () => (
           defaultSelectedKeys={['1']}
           style={{lineHeight: '64px'}}
         >
-          <Menu.Item key="1"><Link to="/login">Login</Link></Menu.Item>
           <Menu.Item key="2"><Link to="/">Overview</Link></Menu.Item>
-          <Menu.Item key="3"><Link to="/console">Console</Link></Menu.Item>
+          <Menu.Item key="3" /*style={{float: 'right'}}*/><Link to="/console">Console</Link></Menu.Item>
         </Menu>
       </Header>
       <Switch>
@@ -113,7 +110,7 @@ const Login = () => {
 
   let {from} = location.state || {from: {pathname: '/'}};
 
-  function handleSubmit(event) {
+  function handleSubmit() {
     fakeAuth.authenticate(email, password, () => {
       history.replace(from);
     });
