@@ -2,9 +2,11 @@ import React, {useEffect, useState} from 'react';
 import {Avatar, Button, Comment, Empty, Form, Input, Layout, List, Menu, message, Modal, Row, Spin} from 'antd';
 import {HomeOutlined} from '@ant-design/icons';
 import dayjs from 'dayjs';
-import calendar from 'dayjs/plugin/calendar'
+import calendar from 'dayjs/plugin/calendar';
 
 const {Content, Sider} = Layout;
+const io = require('sails.io.js')(require('socket.io-client'));
+io.sails.url = 'http://localhost:1337';
 
 dayjs.extend(calendar);
 
@@ -18,34 +20,6 @@ function getCoords() {
 	})).then(position => ({lat: position.coords.latitude, lng: position.coords.longitude}));
 }
 
-async function fetchSignals(lat, lng) {
-	let res = await fetch(`http://localhost:1337/api/v1/signal?lat=${lat}&lng=${lng}`, {
-		headers: {'Content-Type': 'application/json; charset=utf-8'},
-		credentials: 'include',
-		method: 'GET',
-	});
-	return res.json();
-}
-
-async function fetchMessagesBySignalId(signalId, skip, limit) {
-	let res = await fetch(`http://localhost:1337/api/v1/signal/${signalId}/messages?skip=${skip}&limit=${limit}`, {
-		headers: {'Content-Type': 'application/json; charset=utf-8'},
-		credentials: 'include',
-		method: 'GET',
-	});
-	return res.json();
-}
-
-async function postMessage(signalId, message) {
-	let res = await fetch(`http://localhost:1337/api/v1/signal/${signalId}/messages`, {
-		headers: {'Content-Type': 'application/json; charset=utf-8'},
-		credentials: 'include',
-		method: 'POST',
-		body: JSON.stringify({signal: signalId, payload: message}),
-	});
-	return res.json();
-}
-
 const Console = () => {
 
 	const [selectedSignal, setSelectedSignal] = useState(null);
@@ -56,42 +30,49 @@ const Console = () => {
 	const [loadingSelectedSignalMessages, setLoadingSelectedSignalMessages] = useState(false);
 
 	useEffect(() => {
+
 		setLoadingSignals(true);
 
 		async function findSignals() {
 			const {lat, lng} = await getCoords();
 
-			let signals = await fetchSignals(lat, lng);
-			setSignals(signals);
-			setLoadingSignals(false);
+			io.socket.get(`/api/v1/signal?lat=${lat}&lng=${lng}`,
+				(signals, resp) => {
+					setSignals(signals);
+					setLoadingSignals(false);
+				});
 		}
 
 		findSignals();
 	}, []);
 
 	function signalSelected({key}) {
-		console.log('selected');
 		let selectedSignal = signals[key];
+
 		setSelectedSignal({...selectedSignal, messages: selectedSignal.messages || []});
 
+		io.socket.on('signal', function (message) {
+			setSelectedSignal(prev => ({...prev, messages: [...prev.messages, message]}));
+		});
+
 		setLoadingSelectedSignalMessages(true);
-		fetchMessagesBySignalId(selectedSignal.id, 0, 20)
-			.then(messages => {
+		io.socket.get(`/api/v1/signal/${selectedSignal.id}/messages?skip=0&limit=20`,
+			(messages, resp) => {
 				setSelectedSignal(prev => ({...prev, messages: messages}));
 				setLoadingSelectedSignalMessages(false);
 			});
 	}
 
 	function handlePostMessage() {
-		postMessage(selectedSignal.id, messagePayload)
-			.then(res => {
-				message.success('Message posted on signal ' + selectedSignal.title);
-				setMessagePayload('');
-				setPostMessageModalVisible(false);
-			})
-			.catch(reason => {
-				console.error(reason);
-				message.error('An error has ocurred trying to post a message to signal ' + selectedSignal.title);
+		io.socket.post(`/api/v1/signal/${selectedSignal.id}/messages`,
+			{signal: selectedSignal.id, payload: messagePayload}, (respData, resp) => {
+				if (resp.statusCode === 200) {
+					message.success('Message posted on signal ' + selectedSignal.title);
+					setMessagePayload('');
+					setPostMessageModalVisible(false);
+				} else {
+					message.error('An error has ocurred trying to post a message to signal ' + selectedSignal.title);
+				}
 			});
 	}
 
@@ -122,29 +103,36 @@ const Console = () => {
 						(
 							<Spin spinning={loadingSelectedSignalMessages} size="large">
 								{selectedSignal.messages.length > 0 ? (
-										<List
-											dataSource={selectedSignal.messages}
-											renderItem={item => (
-												<li>
-													<Comment
-														actions={[<span key="comment-nested-reply-to">Reply</span>]}
-														author={<a>{item.author.fullName}</a>}
-														avatar={
-															<Avatar
-																src="https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png"
-																alt="Han Solo"
-															/>
-														}
-														datetime={dayjs(item.createdAt).calendar()}
-														content={
-															<p>
-																{item.payload}
-															</p>
-														}
-													/>
-												</li>
-											)}
-										/>
+										<div>
+											<div style={{padding: '2em'}}>
+												<Button type="primary" onClick={() => setPostMessageModalVisible(true)}>
+													Post Message
+												</Button>
+											</div>
+											<List
+												dataSource={selectedSignal.messages}
+												renderItem={item => (
+													<li>
+														<Comment
+															actions={[<span key="comment-nested-reply-to">Reply</span>]}
+															author={<a>{item.author.fullName}</a>}
+															avatar={
+																<Avatar
+																	src="https://zos.alipayobjects.com/rmsportal/ODTLcjxAfvqbxHnVXCYX.png"
+																	alt="Han Solo"
+																/>
+															}
+															datetime={dayjs(item.createdAt).calendar()}
+															content={
+																<p>
+																	{item.payload}
+																</p>
+															}
+														/>
+													</li>
+												)}
+											/>
+										</div>
 									) :
 									(
 										<Row justify="space-around" align="middle" style={{height: '80vh'}}>
